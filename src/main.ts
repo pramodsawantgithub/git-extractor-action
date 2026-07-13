@@ -15,6 +15,7 @@ type CommitResponse = {
 };
 
 type PullRequestResponse = {
+  id: number;
   number: number;
   title: string;
   state: string;
@@ -124,6 +125,7 @@ async function run(): Promise<void> {
       }),
     );
 
+    core.setOutput("pr-id", pullRequest?.id?.toString() ?? "");
     core.setOutput("pr-number", pullRequest?.number?.toString() ?? "");
     core.setOutput("pr-url", pullRequest?.html_url ?? "");
     core.setOutput("pr-title", pullRequest?.title ?? "");
@@ -132,6 +134,7 @@ async function run(): Promise<void> {
       "pr-json",
       pullRequest
         ? JSON.stringify({
+            id: pullRequest.id,
             number: pullRequest.number,
             title: pullRequest.title,
             state: pullRequest.state,

@@ -18,6 +18,7 @@ Reusable GitHub Action that uses Octokit to fetch commit, pull request, and issu
 - `commit-message`
 - `commit-author`
 - `commit-json`
+- `pr-id`
 - `pr-number`
 - `pr-url`
 - `pr-title`
@@ -55,6 +56,7 @@ jobs:
         run: |
           echo "Commit SHA: ${{ steps.extractor.outputs.commit-sha }}"
           echo "Commit URL: ${{ steps.extractor.outputs.commit-url }}"
+          echo "PR ID: ${{ steps.extractor.outputs.pr-id }}"
           echo "PR number: ${{ steps.extractor.outputs.pr-number }}"
           echo "PR title: ${{ steps.extractor.outputs.pr-title }}"
           echo "Issue number: ${{ steps.extractor.outputs.issue-number }}"

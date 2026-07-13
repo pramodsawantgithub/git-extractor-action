@@ -35,6 +35,8 @@ outputs:
     description: Commit author login or name
   commit-json:
     description: Commit details as JSON string
+  pr-id:
+    description: Pull request ID if resolved
   pr-number:
     description: Pull request number if resolved
   pr-url:
