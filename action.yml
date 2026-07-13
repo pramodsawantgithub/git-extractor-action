@@ -1,0 +1,61 @@
+name: Git Extractor
+
+description: Extract commit, PR, and issue metadata using Octokit and expose outputs for downstream jobs.
+author: Your Team
+
+inputs:
+  github-token:
+    description: GitHub token with read access to the repository
+    required: true
+    default: ${{ github.token }}
+  owner:
+    description: Repository owner. Defaults to current repository owner.
+    required: false
+  repo:
+    description: Repository name. Defaults to current repository name.
+    required: false
+  commit-sha:
+    description: Commit SHA to fetch. Defaults to github.sha.
+    required: false
+  pr-number:
+    description: Pull request number to fetch. Defaults to pull_request event number or first PR associated to commit.
+    required: false
+  issue-number:
+    description: Issue number to fetch. Defaults to issues event number.
+    required: false
+
+outputs:
+  commit-sha:
+    description: Commit SHA
+  commit-url:
+    description: Commit URL
+  commit-message:
+    description: Commit message
+  commit-author:
+    description: Commit author login or name
+  commit-json:
+    description: Commit details as JSON string
+  pr-number:
+    description: Pull request number if resolved
+  pr-url:
+    description: Pull request URL
+  pr-title:
+    description: Pull request title
+  pr-state:
+    description: Pull request state
+  pr-json:
+    description: Pull request details as JSON string
+  issue-number:
+    description: Issue number if provided/resolved
+  issue-url:
+    description: Issue URL
+  issue-title:
+    description: Issue title
+  issue-state:
+    description: Issue state
+  issue-json:
+    description: Issue details as JSON string
+
+runs:
+  using: node20
+  main: dist/index.js
