@@ -29973,6 +29973,16 @@ function toNumberOrUndefined(value) {
     }
     return parsedValue;
 }
+function toPullRequestListItem(pullRequest) {
+    return {
+        id: pullRequest.id,
+        number: pullRequest.number,
+        title: pullRequest.title,
+        state: pullRequest.state,
+        url: pullRequest.html_url,
+        author: pullRequest.user.login,
+    };
+}
 async function run() {
     try {
         const token = core.getInput("github-token", { required: true });
@@ -30021,6 +30031,22 @@ async function run() {
             });
             issue = issueData;
         }
+        const [openPullRequests, closedPullRequests] = await Promise.all([
+            octokit.paginate(octokit.rest.pulls.list, {
+                owner,
+                repo,
+                state: "open",
+                per_page: 100,
+            }),
+            octokit.paginate(octokit.rest.pulls.list, {
+                owner,
+                repo,
+                state: "closed",
+                per_page: 100,
+            }),
+        ]);
+        const openPullRequestList = openPullRequests.map((pullRequest) => toPullRequestListItem(pullRequest));
+        const closedPullRequestList = closedPullRequests.map((pullRequest) => toPullRequestListItem(pullRequest));
         core.setOutput("commit-sha", commit.sha);
         core.setOutput("commit-url", commit.html_url);
         core.setOutput("commit-message", commit.commit.message);
@@ -30032,19 +30058,18 @@ async function run() {
             author: commit.commit.author?.name ?? "",
             authoredAt: commit.commit.author?.date ?? "",
         }));
+        core.setOutput("pr-id", pullRequest?.id?.toString() ?? "");
         core.setOutput("pr-number", pullRequest?.number?.toString() ?? "");
         core.setOutput("pr-url", pullRequest?.html_url ?? "");
         core.setOutput("pr-title", pullRequest?.title ?? "");
         core.setOutput("pr-state", pullRequest?.state ?? "");
         core.setOutput("pr-json", pullRequest
-            ? JSON.stringify({
-                number: pullRequest.number,
-                title: pullRequest.title,
-                state: pullRequest.state,
-                url: pullRequest.html_url,
-                author: pullRequest.user.login,
-            })
+            ? JSON.stringify(toPullRequestListItem(pullRequest))
             : "");
+        core.setOutput("open-pr-count", openPullRequestList.length.toString());
+        core.setOutput("open-prs-json", JSON.stringify(openPullRequestList));
+        core.setOutput("closed-pr-count", closedPullRequestList.length.toString());
+        core.setOutput("closed-prs-json", JSON.stringify(closedPullRequestList));
         core.setOutput("issue-number", issue?.number?.toString() ?? "");
         core.setOutput("issue-url", issue?.html_url ?? "");
         core.setOutput("issue-title", issue?.title ?? "");
@@ -30058,7 +30083,7 @@ async function run() {
                 author: issue.user.login,
             })
             : "");
-        core.info(`Extracted data for ${owner}/${repo}: commit=${commit.sha}, pr=${pullRequest?.number ?? "none"}, issue=${issue?.number ?? "none"}`);
+        core.info(`Extracted data for ${owner}/${repo}: commit=${commit.sha}, pr=${pullRequest?.number ?? "none"}, openPrs=${openPullRequestList.length}, closedPrs=${closedPullRequestList.length}, issue=${issue?.number ?? "none"}`);
     }
     catch (error) {
         if (error instanceof Error) {
