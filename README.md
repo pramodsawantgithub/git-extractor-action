@@ -4,6 +4,8 @@ Reusable GitHub Action that uses Octokit to fetch commit, pull request, and issu
 
 It also returns repository-wide pull request lists for both open and closed states.
 
+It can also calculate DORA metrics from GitHub Actions deployment workflow runs.
+
 ## Inputs
 
 - `github-token` (required)
@@ -12,6 +14,10 @@ It also returns repository-wide pull request lists for both open and closed stat
 - `commit-sha` (optional, defaults to `${{ github.sha }}`)
 - `pr-number` (optional, defaults to pull request number from event, or first PR associated with commit)
 - `issue-number` (optional, defaults to issue number from `issues` event)
+- `include-dora-metrics` (optional, default `true`)
+- `dora-lookback-days` (optional, default `30`)
+- `dora-branch` (optional, default `main`)
+- `dora-workflow-id` (optional, recommended for accuracy, example `deploy.yml`)
 
 ## Outputs
 
@@ -30,6 +36,17 @@ It also returns repository-wide pull request lists for both open and closed stat
 - `open-prs-json`
 - `closed-pr-count`
 - `closed-prs-json`
+- `dora-lookback-days`
+- `dora-branch`
+- `dora-workflow-id`
+- `dora-deployment-count`
+- `dora-successful-deployment-count`
+- `dora-failed-deployment-count`
+- `dora-deployment-frequency-per-day`
+- `dora-change-failure-rate`
+- `dora-lead-time-hours`
+- `dora-mttr-hours`
+- `dora-json`
 - `issue-number`
 - `issue-url`
 - `issue-title`
@@ -57,6 +74,8 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: 123
+          dora-workflow-id: deploy.yml
+          dora-lookback-days: 30
 
       - name: Print outputs
         run: |
@@ -67,6 +86,11 @@ jobs:
           echo "PR title: ${{ steps.extractor.outputs.pr-title }}"
           echo "Open PR count: ${{ steps.extractor.outputs.open-pr-count }}"
           echo "Closed PR count: ${{ steps.extractor.outputs.closed-pr-count }}"
+          echo "DORA deployment count: ${{ steps.extractor.outputs.dora-deployment-count }}"
+          echo "DORA deployment frequency/day: ${{ steps.extractor.outputs.dora-deployment-frequency-per-day }}"
+          echo "DORA change failure rate (%): ${{ steps.extractor.outputs.dora-change-failure-rate }}"
+          echo "DORA lead time (hours): ${{ steps.extractor.outputs.dora-lead-time-hours }}"
+          echo "DORA MTTR (hours): ${{ steps.extractor.outputs.dora-mttr-hours }}"
           echo "Issue number: ${{ steps.extractor.outputs.issue-number }}"
           echo "Issue title: ${{ steps.extractor.outputs.issue-title }}"
           echo "PR JSON: ${{ steps.extractor.outputs.pr-json }}"
@@ -83,6 +107,25 @@ Each item in `open-prs-json` and `closed-prs-json` contains:
 - `state`
 - `url`
 - `author`
+
+`dora-json` structure:
+
+- `lookbackDays`
+- `branch`
+- `workflowId`
+- `deploymentCount`
+- `successfulDeploymentCount`
+- `failedDeploymentCount`
+- `deploymentFrequencyPerDay`
+- `changeFailureRatePercent`
+- `leadTimeHours`
+- `mttrHours`
+
+Notes for DORA accuracy:
+
+- Set `dora-workflow-id` to a deployment workflow (for example `deploy.yml`) to avoid counting non-deployment workflows.
+- Lead time is calculated as time from commit author/committer timestamp to successful deployment completion timestamp.
+- MTTR is calculated from each failed deployment completion time to the next successful deployment completion time.
 
 ## Local development
 

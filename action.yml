@@ -23,6 +23,21 @@ inputs:
   issue-number:
     description: Issue number to fetch. Defaults to issues event number.
     required: false
+  include-dora-metrics:
+    description: Whether to calculate DORA metrics from Actions workflow runs.
+    required: false
+    default: "true"
+  dora-lookback-days:
+    description: Number of trailing days used for DORA metric calculations.
+    required: false
+    default: "30"
+  dora-branch:
+    description: Branch used when querying deployment workflow runs for DORA metrics.
+    required: false
+    default: main
+  dora-workflow-id:
+    description: Optional deployment workflow id or file name (for example deploy.yml) used to scope DORA metrics.
+    required: false
 
 outputs:
   commit-sha:
@@ -55,6 +70,28 @@ outputs:
     description: Count of all closed pull requests in the repository
   closed-prs-json:
     description: Closed pull requests as a JSON array
+  dora-lookback-days:
+    description: Lookback window used for DORA calculations
+  dora-branch:
+    description: Branch used for DORA run selection
+  dora-workflow-id:
+    description: Workflow id/name filter used for DORA calculations
+  dora-deployment-count:
+    description: Total completed deployments in the lookback period
+  dora-successful-deployment-count:
+    description: Successful deployments in the lookback period
+  dora-failed-deployment-count:
+    description: Failed deployments in the lookback period
+  dora-deployment-frequency-per-day:
+    description: Deployment frequency per day across the lookback period
+  dora-change-failure-rate:
+    description: Change failure rate percentage
+  dora-lead-time-hours:
+    description: Mean lead time for changes in hours
+  dora-mttr-hours:
+    description: Mean time to recovery in hours
+  dora-json:
+    description: Complete DORA metrics payload as JSON string
   issue-number:
     description: Issue number if provided/resolved
   issue-url:

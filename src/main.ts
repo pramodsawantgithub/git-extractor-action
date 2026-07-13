@@ -11,6 +11,11 @@ type CommitResponse = {
       email: string;
       date: string;
     } | null;
+    committer: {
+      name: string;
+      email: string;
+      date: string;
+    } | null;
   };
 };
 
@@ -44,6 +49,30 @@ type IssueResponse = {
   };
 };
 
+type WorkflowRunResponse = {
+  id: number;
+  name: string | null;
+  head_sha: string;
+  status: string | null;
+  conclusion: string | null;
+  created_at: string;
+  updated_at: string;
+  html_url: string;
+};
+
+type DoraMetrics = {
+  lookbackDays: number;
+  branch: string;
+  workflowId: string;
+  deploymentCount: number;
+  successfulDeploymentCount: number;
+  failedDeploymentCount: number;
+  deploymentFrequencyPerDay: number;
+  changeFailureRatePercent: number;
+  leadTimeHours: number | null;
+  mttrHours: number | null;
+};
+
 function toNumberOrUndefined(value: string): number | undefined {
   if (!value) {
     return undefined;
@@ -70,6 +99,176 @@ function toPullRequestListItem(
   };
 }
 
+function toPositiveInteger(value: string, name: string, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsedValue = Number(value);
+  if (!Number.isInteger(parsedValue) || parsedValue <= 0) {
+    throw new Error(`Invalid ${name}: ${value}`);
+  }
+
+  return parsedValue;
+}
+
+function roundTo(value: number, decimals: number): number {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+}
+
+function average(values: number[]): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return total / values.length;
+}
+
+function hoursBetween(start: string, end: string): number | null {
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return null;
+  }
+
+  const differenceInMilliseconds = endDate.getTime() - startDate.getTime();
+  if (differenceInMilliseconds < 0) {
+    return null;
+  }
+
+  return differenceInMilliseconds / (1000 * 60 * 60);
+}
+
+async function calculateDoraMetrics(params: {
+  octokit: ReturnType<typeof github.getOctokit>;
+  owner: string;
+  repo: string;
+  branch: string;
+  lookbackDays: number;
+  workflowId: string;
+}): Promise<DoraMetrics> {
+  const { octokit, owner, repo, branch, lookbackDays, workflowId } = params;
+
+  const fromDate = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
+  const createdFilter = `>=${fromDate.toISOString()}`;
+
+  const commonOptions = {
+    owner,
+    repo,
+    branch,
+    created: createdFilter,
+    per_page: 100,
+  } as const;
+
+  const workflowRuns = workflowId
+    ? await octokit.paginate(octokit.rest.actions.listWorkflowRuns, {
+        ...commonOptions,
+        workflow_id: workflowId,
+      })
+    : await octokit.paginate(octokit.rest.actions.listWorkflowRunsForRepo, {
+        ...commonOptions,
+      });
+
+  const completedDeployments = (workflowRuns as WorkflowRunResponse[])
+    .filter(
+      (run) =>
+        run.status === "completed" &&
+        (run.conclusion === "success" || run.conclusion === "failure"),
+    )
+    .sort(
+      (first, second) =>
+        new Date(first.updated_at).getTime() -
+        new Date(second.updated_at).getTime(),
+    );
+
+  const successfulDeployments = completedDeployments.filter(
+    (run) => run.conclusion === "success",
+  );
+  const failedDeployments = completedDeployments.filter(
+    (run) => run.conclusion === "failure",
+  );
+
+  const deploymentCount = completedDeployments.length;
+  const deploymentFrequencyPerDay =
+    lookbackDays > 0 ? deploymentCount / lookbackDays : 0;
+  const changeFailureRatePercent =
+    deploymentCount > 0
+      ? (failedDeployments.length / deploymentCount) * 100
+      : 0;
+
+  const commitTimestampCache = new Map<string, string>();
+  const leadTimeSamples: number[] = [];
+
+  for (const run of successfulDeployments) {
+    if (!run.head_sha) {
+      continue;
+    }
+
+    let commitTimestamp = commitTimestampCache.get(run.head_sha);
+    if (!commitTimestamp) {
+      const { data: runCommitData } = await octokit.rest.repos.getCommit({
+        owner,
+        repo,
+        ref: run.head_sha,
+      });
+
+      const runCommit = runCommitData as CommitResponse;
+      commitTimestamp =
+        runCommit.commit.author?.date ?? runCommit.commit.committer?.date ?? "";
+      if (!commitTimestamp) {
+        continue;
+      }
+
+      commitTimestampCache.set(run.head_sha, commitTimestamp);
+    }
+
+    const leadTimeHours = hoursBetween(commitTimestamp, run.updated_at);
+    if (leadTimeHours !== null) {
+      leadTimeSamples.push(leadTimeHours);
+    }
+  }
+
+  const mttrSamples: number[] = [];
+  for (const failedRun of failedDeployments) {
+    const recoveryRun = successfulDeployments.find(
+      (candidate) =>
+        new Date(candidate.updated_at).getTime() >
+        new Date(failedRun.updated_at).getTime(),
+    );
+
+    if (!recoveryRun) {
+      continue;
+    }
+
+    const mttrHours = hoursBetween(failedRun.updated_at, recoveryRun.updated_at);
+    if (mttrHours !== null) {
+      mttrSamples.push(mttrHours);
+    }
+  }
+
+  return {
+    lookbackDays,
+    branch,
+    workflowId,
+    deploymentCount,
+    successfulDeploymentCount: successfulDeployments.length,
+    failedDeploymentCount: failedDeployments.length,
+    deploymentFrequencyPerDay: roundTo(deploymentFrequencyPerDay, 4),
+    changeFailureRatePercent: roundTo(changeFailureRatePercent, 2),
+    leadTimeHours:
+      average(leadTimeSamples) === null
+        ? null
+        : roundTo(average(leadTimeSamples) as number, 2),
+    mttrHours:
+      average(mttrSamples) === null
+        ? null
+        : roundTo(average(mttrSamples) as number, 2),
+  };
+}
+
 async function run(): Promise<void> {
   try {
     const token = core.getInput("github-token", { required: true });
@@ -79,6 +278,14 @@ async function run(): Promise<void> {
     const owner = core.getInput("owner") || contextOwner;
     const repo = core.getInput("repo") || contextRepo;
     const commitSha = core.getInput("commit-sha") || github.context.sha;
+    const includeDoraMetrics = core.getBooleanInput("include-dora-metrics");
+    const doraLookbackDays = toPositiveInteger(
+      core.getInput("dora-lookback-days"),
+      "dora-lookback-days",
+      30,
+    );
+    const doraWorkflowId = core.getInput("dora-workflow-id");
+    const doraBranch = core.getInput("dora-branch") || "main";
 
     const pullRequestInput = core.getInput("pr-number");
     const issueInput = core.getInput("issue-number");
@@ -154,6 +361,18 @@ async function run(): Promise<void> {
       toPullRequestListItem(pullRequest as PullRequestResponse),
     );
 
+    let doraMetrics: DoraMetrics | undefined;
+    if (includeDoraMetrics) {
+      doraMetrics = await calculateDoraMetrics({
+        octokit,
+        owner,
+        repo,
+        branch: doraBranch,
+        lookbackDays: doraLookbackDays,
+        workflowId: doraWorkflowId,
+      });
+    }
+
     core.setOutput("commit-sha", commit.sha);
     core.setOutput("commit-url", commit.html_url);
     core.setOutput("commit-message", commit.commit.message);
@@ -185,6 +404,43 @@ async function run(): Promise<void> {
     core.setOutput("closed-pr-count", closedPullRequestList.length.toString());
     core.setOutput("closed-prs-json", JSON.stringify(closedPullRequestList));
 
+    core.setOutput("dora-lookback-days", doraMetrics?.lookbackDays.toString() ?? "");
+    core.setOutput("dora-branch", doraMetrics?.branch ?? "");
+    core.setOutput("dora-workflow-id", doraMetrics?.workflowId ?? "");
+    core.setOutput(
+      "dora-deployment-count",
+      doraMetrics?.deploymentCount.toString() ?? "",
+    );
+    core.setOutput(
+      "dora-successful-deployment-count",
+      doraMetrics?.successfulDeploymentCount.toString() ?? "",
+    );
+    core.setOutput(
+      "dora-failed-deployment-count",
+      doraMetrics?.failedDeploymentCount.toString() ?? "",
+    );
+    core.setOutput(
+      "dora-deployment-frequency-per-day",
+      doraMetrics?.deploymentFrequencyPerDay.toString() ?? "",
+    );
+    core.setOutput(
+      "dora-change-failure-rate",
+      doraMetrics?.changeFailureRatePercent.toString() ?? "",
+    );
+    core.setOutput(
+      "dora-lead-time-hours",
+      doraMetrics?.leadTimeHours !== null && doraMetrics?.leadTimeHours !== undefined
+        ? doraMetrics.leadTimeHours.toString()
+        : "",
+    );
+    core.setOutput(
+      "dora-mttr-hours",
+      doraMetrics?.mttrHours !== null && doraMetrics?.mttrHours !== undefined
+        ? doraMetrics.mttrHours.toString()
+        : "",
+    );
+    core.setOutput("dora-json", doraMetrics ? JSON.stringify(doraMetrics) : "");
+
     core.setOutput("issue-number", issue?.number?.toString() ?? "");
     core.setOutput("issue-url", issue?.html_url ?? "");
     core.setOutput("issue-title", issue?.title ?? "");
@@ -203,7 +459,7 @@ async function run(): Promise<void> {
     );
 
     core.info(
-      `Extracted data for ${owner}/${repo}: commit=${commit.sha}, pr=${pullRequest?.number ?? "none"}, openPrs=${openPullRequestList.length}, closedPrs=${closedPullRequestList.length}, issue=${issue?.number ?? "none"}`,
+      `Extracted data for ${owner}/${repo}: commit=${commit.sha}, pr=${pullRequest?.number ?? "none"}, openPrs=${openPullRequestList.length}, closedPrs=${closedPullRequestList.length}, doraDeployments=${doraMetrics?.deploymentCount ?? "skipped"}, issue=${issue?.number ?? "none"}`,
     );
   } catch (error) {
     if (error instanceof Error) {
