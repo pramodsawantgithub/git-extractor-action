@@ -1,4 +1,4 @@
-# git-extractor-action
+# git-extractor-action #
 
 Reusable GitHub Action that uses Octokit to fetch commit, pull request, and issue metadata and expose it as workflow outputs.
 
