@@ -2,6 +2,8 @@
 
 Reusable GitHub Action that uses Octokit to fetch commit, pull request, and issue metadata and expose it as workflow outputs.
 
+It also returns repository-wide pull request lists for both open and closed states.
+
 ## Inputs
 
 - `github-token` (required)
@@ -24,6 +26,10 @@ Reusable GitHub Action that uses Octokit to fetch commit, pull request, and issu
 - `pr-title`
 - `pr-state`
 - `pr-json`
+- `open-pr-count`
+- `open-prs-json`
+- `closed-pr-count`
+- `closed-prs-json`
 - `issue-number`
 - `issue-url`
 - `issue-title`
@@ -59,11 +65,24 @@ jobs:
           echo "PR ID: ${{ steps.extractor.outputs.pr-id }}"
           echo "PR number: ${{ steps.extractor.outputs.pr-number }}"
           echo "PR title: ${{ steps.extractor.outputs.pr-title }}"
+          echo "Open PR count: ${{ steps.extractor.outputs.open-pr-count }}"
+          echo "Closed PR count: ${{ steps.extractor.outputs.closed-pr-count }}"
           echo "Issue number: ${{ steps.extractor.outputs.issue-number }}"
           echo "Issue title: ${{ steps.extractor.outputs.issue-title }}"
           echo "PR JSON: ${{ steps.extractor.outputs.pr-json }}"
+          echo "Open PR list: ${{ steps.extractor.outputs.open-prs-json }}"
+          echo "Closed PR list: ${{ steps.extractor.outputs.closed-prs-json }}"
           echo "Issue JSON: ${{ steps.extractor.outputs.issue-json }}"
 ```
+
+Each item in `open-prs-json` and `closed-prs-json` contains:
+
+- `id`
+- `number`
+- `title`
+- `state`
+- `url`
+- `author`
 
 ## Local development
 

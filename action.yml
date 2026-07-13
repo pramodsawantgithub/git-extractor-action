@@ -47,6 +47,14 @@ outputs:
     description: Pull request state
   pr-json:
     description: Pull request details as JSON string
+  open-pr-count:
+    description: Count of all open pull requests in the repository
+  open-prs-json:
+    description: Open pull requests as a JSON array
+  closed-pr-count:
+    description: Count of all closed pull requests in the repository
+  closed-prs-json:
+    description: Closed pull requests as a JSON array
   issue-number:
     description: Issue number if provided/resolved
   issue-url:

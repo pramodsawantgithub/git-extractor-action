@@ -25,6 +25,15 @@ type PullRequestResponse = {
   };
 };
 
+type PullRequestListItem = {
+  id: number;
+  number: number;
+  title: string;
+  state: string;
+  url: string;
+  author: string;
+};
+
 type IssueResponse = {
   number: number;
   title: string;
@@ -46,6 +55,19 @@ function toNumberOrUndefined(value: string): number | undefined {
   }
 
   return parsedValue;
+}
+
+function toPullRequestListItem(
+  pullRequest: PullRequestResponse,
+): PullRequestListItem {
+  return {
+    id: pullRequest.id,
+    number: pullRequest.number,
+    title: pullRequest.title,
+    state: pullRequest.state,
+    url: pullRequest.html_url,
+    author: pullRequest.user.login,
+  };
 }
 
 async function run(): Promise<void> {
@@ -110,6 +132,28 @@ async function run(): Promise<void> {
       issue = issueData as IssueResponse;
     }
 
+    const [openPullRequests, closedPullRequests] = await Promise.all([
+      octokit.paginate(octokit.rest.pulls.list, {
+        owner,
+        repo,
+        state: "open",
+        per_page: 100,
+      }),
+      octokit.paginate(octokit.rest.pulls.list, {
+        owner,
+        repo,
+        state: "closed",
+        per_page: 100,
+      }),
+    ]);
+
+    const openPullRequestList = openPullRequests.map((pullRequest) =>
+      toPullRequestListItem(pullRequest as PullRequestResponse),
+    );
+    const closedPullRequestList = closedPullRequests.map((pullRequest) =>
+      toPullRequestListItem(pullRequest as PullRequestResponse),
+    );
+
     core.setOutput("commit-sha", commit.sha);
     core.setOutput("commit-url", commit.html_url);
     core.setOutput("commit-message", commit.commit.message);
@@ -133,16 +177,13 @@ async function run(): Promise<void> {
     core.setOutput(
       "pr-json",
       pullRequest
-        ? JSON.stringify({
-            id: pullRequest.id,
-            number: pullRequest.number,
-            title: pullRequest.title,
-            state: pullRequest.state,
-            url: pullRequest.html_url,
-            author: pullRequest.user.login,
-          })
+        ? JSON.stringify(toPullRequestListItem(pullRequest))
         : "",
     );
+    core.setOutput("open-pr-count", openPullRequestList.length.toString());
+    core.setOutput("open-prs-json", JSON.stringify(openPullRequestList));
+    core.setOutput("closed-pr-count", closedPullRequestList.length.toString());
+    core.setOutput("closed-prs-json", JSON.stringify(closedPullRequestList));
 
     core.setOutput("issue-number", issue?.number?.toString() ?? "");
     core.setOutput("issue-url", issue?.html_url ?? "");
@@ -162,7 +203,7 @@ async function run(): Promise<void> {
     );
 
     core.info(
-      `Extracted data for ${owner}/${repo}: commit=${commit.sha}, pr=${pullRequest?.number ?? "none"}, issue=${issue?.number ?? "none"}`,
+      `Extracted data for ${owner}/${repo}: commit=${commit.sha}, pr=${pullRequest?.number ?? "none"}, openPrs=${openPullRequestList.length}, closedPrs=${closedPullRequestList.length}, issue=${issue?.number ?? "none"}`,
     );
   } catch (error) {
     if (error instanceof Error) {
